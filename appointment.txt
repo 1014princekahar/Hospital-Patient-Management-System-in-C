@@ -1,8 +1,0 @@
-====================================
-Token : 101
-Patient : fahad vora
-Age : 12
-Disease : ill
-Doctor : prince
-====================================
-
