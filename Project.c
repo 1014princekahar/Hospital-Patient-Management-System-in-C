@@ -4,7 +4,11 @@
 
 #define MAX 200
 
-const char doctor[] = "doctors.txt", patient[] = "appointment.txt", token_file[] = "token.txt";
+const char doctorFile[] = "doctors.txt";
+const char appointedDoctorFile[] = "appointedDoctors.txt";
+const char appointmentFile[] = "appointment.txt";
+const char servedFile[] = "servePatient.txt";
+const char tokenFile[] = "token.txt";
 
 FILE *fp, *fp1;
 
@@ -32,17 +36,44 @@ typedef struct
     char doctor[MAX];
 } Patient;
 
+/* ====================== Arrays ====================== */
+
+Patient queue[MAX];
+Patient stack[MAX];
+
 /* ====================== Function Prototypes ====================== */
 
 void clearScreen();
-void insertQueue(Patient *p);
-void loadDoctors();
+
+void addDoctors();
+void showDoctors();
+
 int doctorValidation(Patient *p);
+
+void insertQueue(Patient *p);
+Patient deleteQueue();
+
+void pushStack(Patient p);
+Patient popStack();
+
 void addPatient();
 void servePatient();
+void displayPatients();
 void undoServe();
 
-/* ******************************* Main Function( Switch Case ) ******************************* */
+void saveToken();
+void saveAppointments();
+
+void rewriteServedFile();
+// Move a doctor from doctors.txt into appointedDoctors.txt when a patient is assigned
+int moveDoctorToAppointed(char doctorName[]);
+// Restore the doctor back to doctors.txt when the assigned patient is served
+int restoreDoctorToDoctors(char doctorName[]);
+
+void sortQueue();
+int tokenExists(int token);
+
+/* ====================== Main Function ====================== */
 
 int main()
 {
@@ -81,31 +112,31 @@ int main()
         switch (ch)
         {
         case 1:
-            loadDoctors();
+            addDoctors();
             break;
 
         case 2:
-            // showDoctors();
+            showDoctors();
             break;
 
         case 3:
-            // addPatient();
+            addPatient();
             break;
 
         case 4:
-            // servePatient();
+            servePatient();
             break;
 
         case 5:
-            // displayPatients();
+            displayPatients();
             break;
 
         case 6:
-            // undoServe();
+            undoServe();
             break;
 
         case 7:
-            // saveToken();
+            saveToken();
             printf("\nProgram Closed Successfully...\n");
             break;
 
@@ -136,58 +167,36 @@ void clearScreen()
 #endif
 }
 
-/* ******************************* Insert Patient into Queue ******************************* */
+/* ====================== Add Doctors ====================== */
 
-void insertQueue(Patient *p)
-{
-    if (r == MAX - 1)
-    {
-        printf("Queue is Full...\n");
-        return;
-    }
-
-    if (f == -1)
-    {
-        f = 0;
-    }
-
-    queue[++r] = *p;
-}
-
-/* ******************************* Load Doctors ******************************* */
-
-void loadDoctors()
+void addDoctors()
 {
     clearScreen();
 
-    printf(" ====> Load Doctors <==== \n");
-    int doctor_number;
-
-    printf("How Many Doctors You Want to Add : ");
-    scanf("%d", &doctor_number);
-    getchar(); // Clear newline
-
+    int n;
     Doctor dr;
 
-    fp = fopen(doctor, "a");
+    printf("\n========== Add Doctors ==========\n");
+
+    printf("How Many Doctors You Want to Add : ");
+    scanf("%d", &n);
+
+    fp = fopen(doctorFile, "a");
 
     if (fp == NULL)
     {
-        printf("Unable to Open %s\n", doctor);
+        printf("\nUnable to Open %s\n", doctorFile);
         return;
     }
 
-    for (int i = 0; i < doctor_number; i++)
+    for (int i = 0; i < n; i++)
     {
-        printf("\nDoctor %d Details\n", i + 1);
+        printf("\nDoctor %d\n", i + 1);
 
         printf("Enter Doctor Name : ");
         scanf(" %[^\n]", dr.name);
-        getchar(); // Clear newline
 
-        fprintf(fp,
-                "Doctor Name : %s\n",
-                dr.name);
+        fprintf(fp, "Doctor Name : %s\n", dr.name);
     }
 
     fclose(fp);
@@ -195,36 +204,55 @@ void loadDoctors()
     printf("\nDoctors Added Successfully...\n");
 }
 
-/* ******************************* Check Doctor Validation ******************************* */
+/* ====================== Show Doctors ====================== */
+
+void showDoctors()
+{
+    clearScreen();
+
+    char line[MAX];
+
+    fp = fopen(doctorFile, "r");
+
+    if (fp == NULL)
+    {
+        printf("\nDoctor File Not Found...\n");
+        return;
+    }
+
+    printf("\n========== Doctors List ==========\n\n");
+
+    while (fgets(line, sizeof(line), fp) != NULL)
+    {
+        printf("%s", line);
+    }
+
+    fclose(fp);
+}
+
+/* ====================== Doctor Validation ====================== */
 
 int doctorValidation(Patient *p)
 {
     char line[MAX];
     char doctorName[MAX];
 
-    fp1 = fopen(doctor, "r");
+    // Check whether the requested doctor exists in doctors.txt
+    fp1 = fopen(doctorFile, "r");
 
     if (fp1 == NULL)
     {
-        printf("Doctor File Not Found...\n");
+        printf("\nDoctor File Not Found...\n");
         return 0;
     }
 
     while (fgets(line, sizeof(line), fp1) != NULL)
     {
-        /* Check Only Doctor Name Line */
-
         if (strncmp(line, "Doctor Name : ", 14) == 0)
         {
-            /* Extract Doctor Name */
-
             strcpy(doctorName, line + 14);
 
-            /* Remove Newline */
-
             doctorName[strcspn(doctorName, "\n")] = '\0';
-
-            /* Compare Doctor Name */
 
             if (strcmp(p->doctor, doctorName) == 0)
             {
@@ -239,44 +267,321 @@ int doctorValidation(Patient *p)
     return 0;
 }
 
-/* ******************************* Add Patient ******************************* */
+/* ====================== Insert Queue ====================== */
+
+void insertQueue(Patient *p)
+{
+    if (r == MAX - 1)
+    {
+        printf("\nQueue Overflow...\n");
+        return;
+    }
+
+    if (f == -1)
+    {
+        f = 0;
+    }
+
+    queue[++r] = *p;
+}
+
+/* ====================== Delete Queue ====================== */
+
+Patient deleteQueue()
+{
+    Patient p;
+
+    if (f == -1 || f > r)
+    {
+        p.token = -1;
+        return p;
+    }
+
+    p = queue[f];
+
+    f++;
+
+    return p;
+}
+
+/* ====================== Push Stack ====================== */
+
+void pushStack(Patient p)
+{
+    if (top == MAX - 1)
+    {
+        printf("\nStack Overflow...\n");
+        return;
+    }
+
+    stack[++top] = p;
+}
+
+/* ====================== Pop Stack ====================== */
+
+Patient popStack()
+{
+    Patient p;
+
+    if (top == -1)
+    {
+        p.token = -1;
+        return p;
+    }
+
+    p = stack[top--];
+
+    return p;
+}
+
+/* ====================== Duplicate Token Check ====================== */
+
+int tokenExists(int token)
+{
+    if (f == -1 || f > r)
+    {
+        return 0;
+    }
+
+    for (int i = f; i <= r; i++)
+    {
+        if (queue[i].token == token)
+        {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+/* ====================== Sort Queue ====================== */
+
+void sortQueue()
+{
+    if (f == -1 || f > r)
+    {
+        return;
+    }
+
+    for (int i = f; i <= r; i++)
+    {
+        for (int j = i + 1; j <= r; j++)
+        {
+            if (queue[i].token > queue[j].token)
+            {
+                Patient temp = queue[i];
+                queue[i] = queue[j];
+                queue[j] = temp;
+            }
+        }
+    }
+}
+
+/* ====================== Save Appointments ====================== */
+
+void saveAppointments()
+{
+    fp = fopen(appointmentFile, "w");
+
+    if (fp == NULL)
+    {
+        printf("Unable to Open %s\n", appointmentFile);
+        return;
+    }
+
+    if (f != -1 && f <= r)
+    {
+        for (int i = f; i <= r; i++)
+        {
+            fprintf(fp,
+                    "====================================\n"
+                    "Token : %d\n"
+                    "Patient : %s %s\n"
+                    "Age : %d\n"
+                    "Disease : %s\n"
+                    "Doctor : %s\n"
+                    "====================================\n\n",
+                    queue[i].token,
+                    queue[i].name.firstName,
+                    queue[i].name.lastName,
+                    queue[i].age,
+                    queue[i].disease,
+                    queue[i].doctor);
+        }
+    }
+
+    fclose(fp);
+}
+
+/* ====================== Rewrite Served File ====================== */
+
+void rewriteServedFile()
+{
+    fp = fopen(servedFile, "w");
+
+    if (fp == NULL)
+    {
+        return;
+    }
+
+    for (int i = 0; i <= top; i++)
+    {
+        fprintf(fp,
+                "====================================\n"
+                "Token : %d\n"
+                "Patient : %s %s\n"
+                "Age : %d\n"
+                "Disease : %s\n"
+                "Doctor : %s\n"
+                "====================================\n\n",
+                stack[i].token,
+                stack[i].name.firstName,
+                stack[i].name.lastName,
+                stack[i].age,
+                stack[i].disease,
+                stack[i].doctor);
+    }
+
+    fclose(fp);
+}
+
+int moveDoctorToAppointed(char doctorName[])
+{
+    FILE *fp_doc = fopen(doctorFile, "r");
+    FILE *fp_temp = fopen("temp_doctors.txt", "w");
+    FILE *fp_app = fopen(appointedDoctorFile, "a");
+    char line[MAX];
+    char extractedDoctor[MAX];
+    int moved = 0;
+
+    if (fp_doc == NULL || fp_temp == NULL || fp_app == NULL)
+    {
+        if (fp_doc)
+            fclose(fp_doc);
+        if (fp_temp)
+            fclose(fp_temp);
+        if (fp_app)
+            fclose(fp_app);
+        return 0;
+    }
+
+    while (fgets(line, sizeof(line), fp_doc) != NULL)
+    {
+        if (strncmp(line, "Doctor Name : ", 14) == 0)
+        {
+            strcpy(extractedDoctor, line + 14);
+            extractedDoctor[strcspn(extractedDoctor, "\n")] = '\0';
+
+            if (strcmp(extractedDoctor, doctorName) == 0)
+            {
+                fprintf(fp_app, "Doctor Name : %s\n", doctorName);
+                moved = 1;
+                continue;
+            }
+        }
+
+        fprintf(fp_temp, "%s", line);
+    }
+
+    fclose(fp_doc);
+    fclose(fp_temp);
+    fclose(fp_app);
+
+    if (!moved)
+    {
+        remove("temp_doctors.txt");
+        return 0;
+    }
+
+    remove(doctorFile);
+    rename("temp_doctors.txt", doctorFile);
+    return 1;
+}
+
+int restoreDoctorToDoctors(char doctorName[])
+{
+    FILE *fp_app = fopen(appointedDoctorFile, "r");
+    FILE *fp_temp = fopen("temp_appointed.txt", "w");
+    FILE *fp_doc = fopen(doctorFile, "a");
+    char line[MAX];
+    char extractedDoctor[MAX];
+    int restored = 0;
+
+    if (fp_app == NULL || fp_temp == NULL || fp_doc == NULL)
+    {
+        if (fp_app)
+            fclose(fp_app);
+        if (fp_temp)
+            fclose(fp_temp);
+        if (fp_doc)
+            fclose(fp_doc);
+        return 0;
+    }
+
+    while (fgets(line, sizeof(line), fp_app) != NULL)
+    {
+        if (strncmp(line, "Doctor Name : ", 14) == 0)
+        {
+            strcpy(extractedDoctor, line + 14);
+            extractedDoctor[strcspn(extractedDoctor, "\n")] = '\0';
+
+            if (strcmp(extractedDoctor, doctorName) == 0)
+            {
+                fprintf(fp_doc, "Doctor Name : %s\n", doctorName);
+                restored = 1;
+                continue;
+            }
+        }
+
+        fprintf(fp_temp, "%s", line);
+    }
+
+    fclose(fp_app);
+    fclose(fp_temp);
+    fclose(fp_doc);
+
+    if (!restored)
+    {
+        remove("temp_appointed.txt");
+        return 0;
+    }
+
+    remove(appointedDoctorFile);
+    rename("temp_appointed.txt", appointedDoctorFile);
+    return 1;
+}
+
+/* ====================== Add Patient ====================== */
 
 void addPatient()
 {
     clearScreen();
 
     Patient p;
-    int patient_number;
+
+    int n;
+
+    printf("\n========== Add Patient ==========\n");
 
     printf("How Many Patients You Want to Add : ");
-    scanf("%d", &patient_number);
-    getchar(); // Clear newline from buffer
+    scanf("%d", &n);
 
-    fp = fopen(patient, "a");
-
-    if (fp == NULL)
+    for (int i = 0; i < n; i++)
     {
-        printf("Unable to Open %s\n", patient);
-        return;
-    }
+        printf("\n========== Patient %d ==========\n", i + 1);
 
-    for (int i = 0; i < patient_number; i++)
-    {
-        printf("\n========== Patient %d Details ==========\n", i + 1);
-
-        printf("Enter Patient First Name : ");
+        printf("Enter First Name : ");
         scanf(" %[^\n]", p.name.firstName);
 
-        printf("Enter Patient Last Name : ");
+        printf("Enter Last Name : ");
         scanf(" %[^\n]", p.name.lastName);
 
-        printf("Enter Patient Age : ");
+        printf("Enter Age : ");
         scanf("%d", &p.age);
-        getchar(); // Clear newline
 
         if (p.age <= 0)
         {
-            printf("Invalid Age...\n");
+            printf("\nInvalid Age...\n");
             i--;
             continue;
         }
@@ -287,31 +592,32 @@ void addPatient()
         printf("Enter Doctor Name : ");
         scanf(" %[^\n]", p.doctor);
 
-        if (strlen(p.doctor) == 0)
-        {
-            printf("Invalid Doctor Name...\n");
-            i--;
-            continue;
-        }
-
-        /* Doctor Validation */
-
         if (!doctorValidation(&p))
         {
-            printf("Doctor Not Found...\n");
+            printf("\nDoctor Not Found...\n");
             i--;
             continue;
         }
 
-        /* Dynamic Token Generation */
+        // Doctor is assigned to this patient, so move doctor record to appointedDoctors.txt
+        if (!moveDoctorToAppointed(p.doctor))
+        {
+            printf("\nUnable to appoint doctor.\n");
+            i--;
+            continue;
+        }
 
-        p.token = ++Token;
-
-        /* Insert Into Queue */
+        // Generate a unique token for the patient
+        do
+        {
+            p.token = ++Token;
+        } while (tokenExists(p.token));
 
         insertQueue(&p);
 
-        /* Display Token */
+        sortQueue();
+
+        saveAppointments();
 
         printf("\n====================================\n");
         printf("Token Generated Successfully\n");
@@ -321,16 +627,50 @@ void addPatient()
                p.name.lastName);
         printf("Doctor   : %s\n", p.doctor);
         printf("====================================\n");
+    }
 
-        /* Save Into File */
+    saveToken();
 
+    printf("\nPatients Added Successfully...\n");
+}
+
+/* ====================== Serve Patient ====================== */
+
+void servePatient()
+{
+    clearScreen();
+
+    Patient p;
+
+    p = deleteQueue();
+
+    if (p.token == -1)
+    {
+        printf("\nNo Patients in Queue...\n");
+        return;
+    }
+
+    // Patient has been served, so restore the assigned doctor back into doctors.txt
+    if (!restoreDoctorToDoctors(p.doctor))
+    {
+        printf("\nWarning: Unable to restore doctor to %s\n", doctorFile);
+    }
+
+    // Keep served patients in undo stack before writing served history
+    pushStack(p);
+
+    fp = fopen(servedFile, "a");
+
+    if (fp != NULL)
+    {
         fprintf(fp,
+                "====================================\n"
                 "Token : %d\n"
-                "First Name : %s\n"
-                "Last Name : %s\n"
+                "Patient : %s %s\n"
                 "Age : %d\n"
                 "Disease : %s\n"
-                "Doctor : %s\n\n",
+                "Doctor : %s\n"
+                "====================================\n\n",
                 p.token,
                 p.name.firstName,
                 p.name.lastName,
@@ -338,109 +678,121 @@ void addPatient()
                 p.disease,
                 p.doctor);
 
-        fflush(fp); // Flush buffer immediately
-    }
-
-    fclose(fp);
-
-    // Save token to token.txt
-    fp = fopen(token_file, "w");
-    if (fp != NULL)
-    {
-        fprintf(fp, "%d", Token);
         fclose(fp);
     }
 
-    printf("\nPatients Added Successfully...\n");
+    saveAppointments();
+
+    printf("\n========== Serving Patient ==========\n");
+
+    printf("Token   : %d\n", p.token);
+
+    printf("Patient : %s %s\n",
+           p.name.firstName,
+           p.name.lastName);
+
+    printf("Disease : %s\n", p.disease);
+    printf("Doctor  : %s\n", p.doctor);
+
+    printf("=====================================\n");
 }
 
-/* ******************************* Serve Patient ******************************* */
+/* ====================== Display Waiting Patients ====================== */
 
-void servePatient()
+void displayPatients()
 {
     clearScreen();
 
     if (f == -1 || f > r)
     {
-        printf("No Patients in Queue...\n");
+        printf("\nNo Waiting Patients...\n");
         return;
     }
 
-    Patient p = queue[f];
-    char filename[MAX];
+    printf("\n================ Waiting Patients ================\n\n");
 
-    // Create filename from doctor name
-    strcpy(filename, p.doctor);
-    strcat(filename, ".txt");
+    printf("Token\tPatient Name\t\tDoctor\n");
 
-    // Open or create doctor-specific file
-    fp = fopen(filename, "a");
-    if (fp == NULL)
+    printf("==================================================\n");
+
+    for (int i = f; i <= r; i++)
     {
-        printf("Unable to create %s\n", filename);
-        return;
+        printf("%d\t%s %s\t\t%s\n",
+               queue[i].token,
+               queue[i].name.firstName,
+               queue[i].name.lastName,
+               queue[i].doctor);
     }
-
-    // Write appointment details to doctor's file
-    fprintf(fp,
-            "\n========== Doctor: %s =========\n"
-            "Token : %d\n"
-            "Patient Name : %s %s\n"
-            "Age : %d\n"
-            "Disease : %s\n"
-            "============================\n\n",
-            p.doctor,
-            p.token,
-            p.name.firstName,
-            p.name.lastName,
-            p.age,
-            p.disease);
-
-    fclose(fp);
-
-    // Push served patient onto stack for undo
-    if (top < MAX - 1)
-    {
-        stack[++top] = p;
-    }
-
-    // Display patient details
-    printf("\n====== Patient Served Successfully ======\n");
-    printf("Token : %d\n", p.token);
-    printf("Patient Name : %s %s\n", p.name.firstName, p.name.lastName);
-    printf("Doctor : %s\n", p.doctor);
-    printf("Appointment saved to %s\n", filename);
-    printf("========================================\n");
-
-    // Move to next patient
-    f++;
 }
 
-/* ******************************* Undo Serve Patient ******************************* */
+/* ====================== Undo Serve ====================== */
 
 void undoServe()
 {
     clearScreen();
 
-    if (top == -1)
+    Patient p;
+
+    p = popStack();
+
+    if (p.token == -1)
     {
-        printf("No Served Patient to Undo...\n");
+        printf("\nNo Served Patient to Undo...\n");
         return;
     }
 
-    Patient p = stack[top--];
-
-    // Push patient back to queue
-    if (r < MAX - 1)
+    if (f > 0)
     {
-        f--;
-        queue[r + 1] = p;
-        r++;
+        queue[--f] = p;
+    }
+    else
+    {
+        if (f == -1)
+        {
+            f = 0;
+            r = 0;
+        }
+        else
+        {
+            for (int i = r; i >= f; i--)
+            {
+                queue[i + 1] = queue[i];
+            }
+
+            r++;
+        }
+
+        queue[f] = p;
     }
 
+    sortQueue();
+
+    saveAppointments();
+
+    rewriteServedFile();
+
     printf("\n====== Last Served Patient Restored ======\n");
+
     printf("Token : %d\n", p.token);
-    printf("Patient Name : %s %s\n", p.name.firstName, p.name.lastName);
+
+    printf("Patient : %s %s\n",
+           p.name.firstName,
+           p.name.lastName);
+
     printf("Doctor : %s\n", p.doctor);
-    printf("========================================\n");
+
+    printf("==========================================\n");
+}
+
+/* ====================== Save Token ====================== */
+
+void saveToken()
+{
+    fp = fopen(tokenFile, "w");
+
+    if (fp != NULL)
+    {
+        fprintf(fp, "%d", Token);
+        fclose(fp);
+    }
 }
