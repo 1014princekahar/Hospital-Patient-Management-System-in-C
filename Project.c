@@ -11,7 +11,6 @@ const char appointmentFile[] = "appointment.txt";
 const char servedFile[] = "servePatient.txt";
 const char tokenFile[] = "token.txt";
 
-
 FILE *fp, *fp1;
 
 int f = -1, r = -1, top = -1, Token = 100;
@@ -41,6 +40,8 @@ typedef struct
 /* ====================== Function Prototypes ====================== */
 
 void clearScreen();
+void addDoctors();
+
 
 /* ====================== Main Function ====================== */
 
@@ -81,7 +82,7 @@ int main()
         switch (ch)
         {
         case 1:
-            // addDoctors();
+            addDoctors();
             break;
 
         case 2:
@@ -135,3 +136,41 @@ void clearScreen()
     system("clear");
 #endif
 }
+
+/* ====================== Add Doctors ====================== */
+
+void addDoctors()
+{
+    clearScreen();
+
+    int n;
+    Doctor dr;
+
+    printf("\n========== Add Doctors ==========\n");
+
+    printf("How Many Doctors You Want to Add : ");
+    scanf("%d", &n);
+
+    fp = fopen(doctorFile, "a");
+
+    if (fp == NULL)
+    {
+        printf("\nUnable to Open %s\n", doctorFile);
+        return;
+    }
+
+    for (int i = 0; i < n; i++)
+    {
+        printf("\nDoctor %d\n", i + 1);
+
+        printf("Enter Doctor Name : ");
+        scanf(" %[^\n]", dr.name);
+
+        fprintf(fp, "Doctor Name : %s\n", dr.name);
+    }
+
+    fclose(fp);
+
+    printf("\nDoctors Added Successfully...\n");
+}
+
